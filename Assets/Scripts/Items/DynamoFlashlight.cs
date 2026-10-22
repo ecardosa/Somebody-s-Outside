@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using TMPro;
+using System;
 
 public class DynamoFlashlight : MonoBehaviour
 {
@@ -8,15 +10,26 @@ public class DynamoFlashlight : MonoBehaviour
     public float maxBattery = 120f;
     //Temps necessari de recarrega del 0 al 100%
     public float rechargeTime = 5f;
+    
+    /**Intensitat maxima de la llanterna*/
+    public float maxIntensity = 1000f;
 
     /**Controls i referencies*/
     public Light spotlight;
     public KeyCode toggleKey = KeyCode.F;
     public KeyCode rechargeKey = KeyCode.R;//Mantenint apretat
 
+    public TextMeshProUGUI batteryText;
+
+    /**Animació llanterna*/
+    public Transform crankTransform;
+    public float crankSpeed = 360f;
+    public Vector3 rotationAxis = new Vector3(-1,0,0);
+
     private float currentBattery;
     private bool isOn = false;
     private bool wantsToBeOn = false;
+    private bool isRecharging = false;
     private bool isFlickering = false;
 
     private bool hasFlickered20 = false;
@@ -36,32 +49,68 @@ public class DynamoFlashlight : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (Input.GetKey(rechargeKey))
+        if (Input.GetKeyDown(rechargeKey))
         {
-            RechargeBattery();
-            if (isOn)
+            isRecharging = !isRecharging;
+            if (isRecharging && isOn)
             {
                 TurnOffLight();
             }
-        } else
+        }
+        if (isRecharging)
         {
-            if(wantsToBeOn && currentBattery > 0 && !isOn)
+            RechargeBattery();
+            AnimateCrank();
+
+            if (spotlight != null)
+            {
+                spotlight.enabled = true;
+                spotlight.intensity = maxIntensity * (currentBattery / maxBattery);
+            }
+            if (currentBattery >= maxBattery)
+            {
+                isRecharging = false;
+            }
+        }
+        else
+        {
+            if (wantsToBeOn && currentBattery > 0 && !isOn)
             {
                 TurnOnLight();
             }
+            else if (!wantsToBeOn && spotlight != null && spotlight.enabled)
+            {
+                TurnOffLight();
+            }
+
             HandleInput();
+
             if (isOn)
             {
                 DrainBattery();
                 HandleFlickering();
-            }
-        } 
 
+                if (!isFlickering && spotlight != null)
+                {
+                    spotlight.intensity = maxIntensity * (currentBattery / maxBattery);
+                }
+            }
+        }
+        UpdateUIText();
+    }
+
+    void UpdateUIText()
+    {
+        if (batteryText != null)
+        {
+            int percentage = Mathf.RoundToInt((currentBattery / maxBattery) * 100f);
+            batteryText.text = percentage + "%";
+        }
     }
 
     void HandleInput()
     {
-        if (Input.GetKeyDown(toggleKey))
+        if (Input.GetKeyDown(toggleKey) && !isRecharging)
         {
             wantsToBeOn = !wantsToBeOn; 
 
@@ -120,6 +169,14 @@ public class DynamoFlashlight : MonoBehaviour
         if (currentBattery > 10f)
         {
             hasFlickered10 = false;
+        }
+    }
+
+    void AnimateCrank()
+    {
+        if(crankTransform != null)
+        {
+            crankTransform.Rotate(rotationAxis * crankSpeed * Time.deltaTime);
         }
     }
 
