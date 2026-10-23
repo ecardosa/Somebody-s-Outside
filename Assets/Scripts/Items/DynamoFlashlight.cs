@@ -7,10 +7,9 @@ public class DynamoFlashlight : MonoBehaviour
 {
     /**Configuració de la bateria*/
     //Duració en segons de la bateria(2 minuts)
-    public float maxBattery = 120f;
+    public float timeToEmpty = 120f;
     //Temps necessari de recarrega del 0 al 100%
-    public float rechargeTime = 5f;
-    
+    public float timeToRecharge = 5f;
     /**Intensitat maxima de la llanterna*/
     public float maxIntensity = 1000f;
 
@@ -22,27 +21,38 @@ public class DynamoFlashlight : MonoBehaviour
     public TextMeshProUGUI batteryText;
 
     /**Animació llanterna*/
+    private Quaternion initialCrankRotation;
+    private float currentCrankAngle = 0f;
+    private bool isFinishingCrank = false;
+    private float crankVelocity = 0f;
+    private float targetCrankAngle = 0f;
     public Transform crankTransform;
     public float crankSpeed = 360f;
     public Vector3 rotationAxis = new Vector3(-1,0,0);
 
-    private float currentBattery;
+    private float currentBatteryPercentage = 100f;
     private bool isOn = false;
     private bool wantsToBeOn = false;
     private bool isRecharging = false;
     private bool isFlickering = false;
 
-    private bool hasFlickered20 = false;
+    private bool hasFlickered15 = false;
     private bool hasFlickered10 = false;
 
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        currentBattery = maxBattery;
+        currentBatteryPercentage = 100f;
         if (spotlight != null)
         {
             spotlight.enabled = false;
+            spotlight.intensity = maxIntensity;
+        }
+
+        if(crankTransform != null)
+        {
+            initialCrankRotation = crankTransform.localRotation;
         }
     }
 
@@ -51,12 +61,18 @@ public class DynamoFlashlight : MonoBehaviour
     {
         if (Input.GetKeyDown(rechargeKey))
         {
-            isRecharging = !isRecharging;
-            if (isRecharging && isOn)
+            if (!isRecharging)
             {
-                TurnOffLight();
+                isRecharging = true;
+                isFinishingCrank = false;
+                if (isOn) TurnOffLight();
+            }
+            else
+            {
+                StopRecharging();
             }
         }
+
         if (isRecharging)
         {
             RechargeBattery();
@@ -65,20 +81,26 @@ public class DynamoFlashlight : MonoBehaviour
             if (spotlight != null)
             {
                 spotlight.enabled = true;
-                spotlight.intensity = maxIntensity * (currentBattery / maxBattery);
+                spotlight.intensity = maxIntensity * (currentBatteryPercentage / 100f);
             }
-            if (currentBattery >= maxBattery)
+
+            if (currentBatteryPercentage >= 100f)
             {
-                isRecharging = false;
+                StopRecharging();
             }
         }
         else
         {
-            if (wantsToBeOn && currentBattery > 0 && !isOn)
+            if (isFinishingCrank)
+            {
+                FinishCrankRotation();
+            }
+
+            if (wantsToBeOn && currentBatteryPercentage > 0 && !isOn)
             {
                 TurnOnLight();
             }
-            else if (!wantsToBeOn && spotlight != null && spotlight.enabled)
+            else if (!wantsToBeOn && spotlight != null && spotlight.enabled && !isFinishingCrank)
             {
                 TurnOffLight();
             }
@@ -92,10 +114,11 @@ public class DynamoFlashlight : MonoBehaviour
 
                 if (!isFlickering && spotlight != null)
                 {
-                    spotlight.intensity = maxIntensity * (currentBattery / maxBattery);
+                    spotlight.intensity = maxIntensity * (currentBatteryPercentage / 100f);
                 }
             }
         }
+
         UpdateUIText();
     }
 
@@ -103,8 +126,25 @@ public class DynamoFlashlight : MonoBehaviour
     {
         if (batteryText != null)
         {
-            int percentage = Mathf.RoundToInt((currentBattery / maxBattery) * 100f);
-            batteryText.text = percentage + "%";
+            int displayPercentage = Mathf.RoundToInt(currentBatteryPercentage);
+            batteryText.text = displayPercentage + "%";
+        }
+    }
+
+    void StopRecharging()
+    {
+        isRecharging = false;
+        if (crankTransform != null)
+        {
+            isFinishingCrank = true;
+            crankVelocity = crankSpeed;
+            if(crankSpeed > 0)
+            {
+                targetCrankAngle = Mathf.Ceil(currentCrankAngle / 360f) * 360;
+            } else
+            {
+                targetCrankAngle = Mathf.Floor(currentCrankAngle / 360f) * 360f;
+            }
         }
     }
 
@@ -114,7 +154,7 @@ public class DynamoFlashlight : MonoBehaviour
         {
             wantsToBeOn = !wantsToBeOn; 
 
-            if (wantsToBeOn && currentBattery > 0)
+            if (wantsToBeOn && currentBatteryPercentage > 0)
             {
                 TurnOnLight();
             }
@@ -146,27 +186,28 @@ public class DynamoFlashlight : MonoBehaviour
 
     void DrainBattery()
     {
-        currentBattery -= Time.deltaTime;
-        if (currentBattery <= 0)
+        float drainRate = 100f / timeToEmpty;
+        currentBatteryPercentage -= drainRate * Time.deltaTime;
+        if (currentBatteryPercentage <= 0)
         {
-            currentBattery = 0;
+            currentBatteryPercentage = 0;
             TurnOffLight();
         }
     }
 
     void RechargeBattery()
     {
-        float rechargeRate = maxBattery / rechargeTime;
-        currentBattery += rechargeRate * Time.deltaTime;
-        if (currentBattery > maxBattery)
+        float rechargeRate = 100f / timeToRecharge;
+        currentBatteryPercentage += rechargeRate * Time.deltaTime;
+        if(currentBatteryPercentage > 100f)
         {
-            currentBattery = maxBattery;
+            currentBatteryPercentage = 100f;
         }
-        if (currentBattery > 20f)
+        if (currentBatteryPercentage > 15f)
         {
-            hasFlickered20 = false;
+            hasFlickered15 = false;
         }
-        if (currentBattery > 10f)
+        if (currentBatteryPercentage > 10f)
         {
             hasFlickered10 = false;
         }
@@ -176,7 +217,27 @@ public class DynamoFlashlight : MonoBehaviour
     {
         if(crankTransform != null)
         {
-            crankTransform.Rotate(rotationAxis * crankSpeed * Time.deltaTime);
+            currentCrankAngle += crankSpeed * Time.deltaTime;
+            crankTransform.localRotation = initialCrankRotation * Quaternion.Euler(rotationAxis * currentCrankAngle);
+        }
+    }
+
+    void FinishCrankRotation()
+    {
+        if(crankTransform != null)
+        {
+            currentCrankAngle = Mathf.SmoothDamp(currentCrankAngle, targetCrankAngle, ref crankVelocity, 0.15f, Mathf.Abs(crankSpeed), Time.deltaTime);          
+            if(Mathf.Abs(targetCrankAngle - currentCrankAngle) < 0.5f)
+            {
+                currentCrankAngle = targetCrankAngle;
+            }
+            crankTransform.localRotation = initialCrankRotation * Quaternion.Euler(rotationAxis * currentCrankAngle);
+            if(Mathf.Approximately(currentCrankAngle, targetCrankAngle))
+            {
+                isFinishingCrank = false;
+                currentCrankAngle = 0f;
+                crankTransform.localRotation = initialCrankRotation;
+            }
         }
     }
 
@@ -186,19 +247,16 @@ public class DynamoFlashlight : MonoBehaviour
         {
             return;
         }
-        if(currentBattery <= 20 && currentBattery > 10f && !hasFlickered20)
+        if(currentBatteryPercentage <= 15 && currentBatteryPercentage > 10f && !hasFlickered15)
         {
             StartCoroutine(FlickerEffect(1));
-            hasFlickered20 = true;
-        } else if (currentBattery <=10f && currentBattery > 5f && !hasFlickered10) {
+            hasFlickered15 = true;
+        } else if (currentBatteryPercentage <=10f && currentBatteryPercentage > 5f && !hasFlickered10) {
             StartCoroutine(FlickerEffect(3));
             hasFlickered10= true;
-        } else if (currentBattery <= 5f && currentBattery > 0f)
+        } else if (currentBatteryPercentage <= 5f && currentBatteryPercentage > 0f)
         {
             spotlight.enabled = Mathf.PerlinNoise(Time.time * 15f, 0f) > 0.5f;
-        } else if (currentBattery > 5f)
-        {
-            spotlight.enabled = true;
         }
     }
 
