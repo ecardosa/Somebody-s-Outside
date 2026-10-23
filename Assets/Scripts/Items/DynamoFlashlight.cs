@@ -39,6 +39,16 @@ public class DynamoFlashlight : MonoBehaviour
     private bool hasFlickered15 = false;
     private bool hasFlickered10 = false;
 
+    public DialegManager dialegManager;
+    private int ultimAvisBateria = 100; 
+
+    public float recarregaInicial = 5f;  
+    public float recarregaMaxima = 30f;  
+    public float tempsFriccio = 2.5f;   
+    private float tempsPrementBoto = 0f;
+    public float velocitatManivelaInicial = 150f; 
+    public float velocitatManivelaMaxima = 600f;
+    private float velocitatActualManivela = 0f;   
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -56,20 +66,23 @@ public class DynamoFlashlight : MonoBehaviour
         }
     }
 
-    // Update is called once per frame
     void Update()
     {
-        if (Input.GetKeyDown(rechargeKey))
+        if (Input.GetKey(rechargeKey))
         {
-            if (!isRecharging)
+            if (!isRecharging && currentBatteryPercentage < 100f)
             {
                 isRecharging = true;
                 isFinishingCrank = false;
                 if (isOn) TurnOffLight();
             }
-            else
+        }
+        else
+        {
+            if (isRecharging)
             {
                 StopRecharging();
+                tempsPrementBoto = 0f; 
             }
         }
 
@@ -87,6 +100,7 @@ public class DynamoFlashlight : MonoBehaviour
             if (currentBatteryPercentage >= 100f)
             {
                 StopRecharging();
+                tempsPrementBoto = 0f;
             }
         }
         else
@@ -188,6 +202,22 @@ public class DynamoFlashlight : MonoBehaviour
     {
         float drainRate = 100f / timeToEmpty;
         currentBatteryPercentage -= drainRate * Time.deltaTime;
+
+        // --- INICI DEL CODI DELS DIÀLEGS ---
+        int percentatgeActual = Mathf.RoundToInt(currentBatteryPercentage);
+
+        // Si estem en un múltiple de 10 i hem baixat des de l'últim avís
+        if (percentatgeActual % 10 == 0 && percentatgeActual < ultimAvisBateria && percentatgeActual > 0)
+        {
+            ultimAvisBateria = percentatgeActual; // Registrem l'avís perquè no es repeteixi contínuament
+
+            if (dialegManager != null)
+            {
+                dialegManager.ReproduirAvisBateria(percentatgeActual);
+            }
+        }
+        // --- FINAL DEL CODI DELS DIÀLEGS ---
+
         if (currentBatteryPercentage <= 0)
         {
             currentBatteryPercentage = 0;
@@ -197,11 +227,13 @@ public class DynamoFlashlight : MonoBehaviour
 
     void RechargeBattery()
     {
-        float rechargeRate = 100f / timeToRecharge;
-        currentBatteryPercentage += rechargeRate * Time.deltaTime;
-        if(currentBatteryPercentage > 100f)
+        tempsPrementBoto += Time.deltaTime;
+        float currentRechargeRate = Mathf.Lerp(recarregaInicial, recarregaMaxima, tempsPrementBoto / tempsFriccio);
+        currentBatteryPercentage += currentRechargeRate * Time.deltaTime;
+        if (currentBatteryPercentage >= 100f)
         {
             currentBatteryPercentage = 100f;
+            ultimAvisBateria = 100;
         }
         if (currentBatteryPercentage > 15f)
         {
@@ -215,33 +247,36 @@ public class DynamoFlashlight : MonoBehaviour
 
     void AnimateCrank()
     {
-        if(crankTransform != null)
+        if (crankTransform != null)
         {
-            currentCrankAngle += crankSpeed * Time.deltaTime;
+            float percentatge = Mathf.Clamp01(tempsPrementBoto / tempsFriccio);
+            velocitatActualManivela = Mathf.Lerp(velocitatManivelaInicial, velocitatManivelaMaxima, percentatge);
+            currentCrankAngle -= velocitatActualManivela * Time.deltaTime;
             crankTransform.localRotation = initialCrankRotation * Quaternion.Euler(rotationAxis * currentCrankAngle);
         }
     }
 
     void FinishCrankRotation()
     {
-        if(crankTransform != null)
+        if (crankTransform != null)
         {
-            currentCrankAngle = Mathf.SmoothDamp(currentCrankAngle, targetCrankAngle, ref crankVelocity, 0.15f, Mathf.Abs(crankSpeed), Time.deltaTime);          
-            if(Mathf.Abs(targetCrankAngle - currentCrankAngle) < 0.5f)
+            currentCrankAngle = Mathf.SmoothDamp(currentCrankAngle, targetCrankAngle, ref crankVelocity, 0.15f, Mathf.Abs(velocitatManivelaMaxima), Time.deltaTime);
+            if (Mathf.Abs(targetCrankAngle - currentCrankAngle) < 0.5f)
             {
                 currentCrankAngle = targetCrankAngle;
             }
             crankTransform.localRotation = initialCrankRotation * Quaternion.Euler(rotationAxis * currentCrankAngle);
-            if(Mathf.Approximately(currentCrankAngle, targetCrankAngle))
+            if (Mathf.Approximately(currentCrankAngle, targetCrankAngle))
             {
                 isFinishingCrank = false;
                 currentCrankAngle = 0f;
+                velocitatActualManivela = 0f;
                 crankTransform.localRotation = initialCrankRotation;
             }
         }
     }
 
-    void HandleFlickering()
+        void HandleFlickering()
     {
         if (isFlickering)
         {
